@@ -33,7 +33,9 @@ contract VehicleListingRegistry is AccessControl {
     mapping(address => uint256[]) public sellerListings;
     mapping(address => bool) public authorizedFactories;
 
-    event ListingSubmitted(uint256 indexed listingId, address indexed seller, string vehicleMetadataHash, uint256 startPrice);
+    event ListingSubmitted(
+        uint256 indexed listingId, address indexed seller, string vehicleMetadataHash, uint256 startPrice
+    );
     event ListingApproved(uint256 indexed listingId, address indexed validator);
     event ListingRejected(uint256 indexed listingId, address indexed validator, string reason);
     event FactoryAuthorized(address indexed factory);
@@ -61,7 +63,11 @@ contract VehicleListingRegistry is AccessControl {
         validatorRegistry = ValidatorRegistry(_validatorRegistry);
     }
 
-    function submitListing(string calldata vehicleMetadataHash, uint256 startPrice, uint256 collateralBps) external onlySeller returns (uint256) {
+    function submitListing(string calldata vehicleMetadataHash, uint256 startPrice, uint256 collateralBps)
+        external
+        onlySeller
+        returns (uint256)
+    {
         require(bytes(vehicleMetadataHash).length > 0, "VehicleListingRegistry: empty metadata hash");
         require(startPrice > 0, "VehicleListingRegistry: zero start price");
         require(collateralBps > 0 && collateralBps <= 2000, "VehicleListingRegistry: invalid collateral bps");
@@ -120,8 +126,7 @@ contract VehicleListingRegistry is AccessControl {
     function markListingAuctionCreated(uint256 listingId) external {
         Listing storage listing = listings[listingId];
         require(
-            listing.seller == msg.sender || authorizedFactories[msg.sender],
-            "VehicleListingRegistry: not authorized"
+            listing.seller == msg.sender || authorizedFactories[msg.sender], "VehicleListingRegistry: not authorized"
         );
         require(listing.status == ListingStatus.APPROVED, "VehicleListingRegistry: not approved");
 

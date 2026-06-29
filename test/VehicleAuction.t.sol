@@ -308,11 +308,7 @@ contract VehicleAuctionTest is SharedSetup {
         auction.buyerForceRefund();
 
         // Buyer gets full bidAmount back
-        assertEq(
-            usdc.balanceOf(bidder1),
-            bidderBalBefore + START_PRICE,
-            "buyer should be fully refunded"
-        );
+        assertEq(usdc.balanceOf(bidder1), bidderBalBefore + START_PRICE, "buyer should be fully refunded");
         // Treasury balance unchanged (no fees)
         assertEq(usdc.balanceOf(treasury), treasuryBalBefore, "treasury unchanged");
         // Status CANCELLED

@@ -52,9 +52,7 @@ contract SharedSetup is Test {
         sellerRegistry = new SellerRegistry(admin);
         validatorRegistry = new ValidatorRegistry(admin);
 
-        listingRegistry = new VehicleListingRegistry(
-            admin, address(sellerRegistry), address(validatorRegistry)
-        );
+        listingRegistry = new VehicleListingRegistry(admin, address(sellerRegistry), address(validatorRegistry));
 
         ownershipNFT = new VehicleOwnershipNFT(admin, admin);
 

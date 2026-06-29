@@ -17,8 +17,8 @@ contract VehicleAuctionFactory is AccessControl {
     address public ownershipNFT;
 
     uint256 public defaultMinBidIncrementBps = 500; // 5%
-    uint256 public defaultCollateralBps = 1000;      // 10%
-    uint256 public defaultPlatformFeeBps = 250;       // 2.5%
+    uint256 public defaultCollateralBps = 1000; // 10%
+    uint256 public defaultPlatformFeeBps = 250; // 2.5%
     uint256 public defaultDuration = 3 days;
 
     uint256 public auctionCounter;
@@ -52,11 +52,7 @@ contract VehicleAuctionFactory is AccessControl {
         ownershipNFT = _ownershipNFT;
     }
 
-    function createAuction(
-        uint256 listingId,
-        uint256 startPrice,
-        uint256 duration
-    ) external returns (address) {
+    function createAuction(uint256 listingId, uint256 startPrice, uint256 duration) external returns (address) {
         VehicleListingRegistry vlr = VehicleListingRegistry(listingRegistry);
         Listing memory listing = vlr.getListing(listingId);
 

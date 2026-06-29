@@ -3,6 +3,12 @@ src = "src"
 out = "out"
 libs = ["lib"]
 via-ir = true
+optimizer = true
+optimizer_runs = 1000
+deny = "never"
+
+[lint]
+exclude_lints = ["block-timestamp"]
 
 [fmt]
 line_length = 120

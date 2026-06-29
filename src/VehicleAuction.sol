@@ -158,13 +158,15 @@ contract VehicleAuction is ReentrancyGuard {
             newEndTime = config.endTime + EXTEND_DURATION;
         }
 
-        bids.push(Bid({
-            bidder: msg.sender,
-            bidAmount: bidAmount,
-            collateral: collateral,
-            timestamp: block.timestamp,
-            active: true
-        }));
+        bids.push(
+            Bid({
+                bidder: msg.sender,
+                bidAmount: bidAmount,
+                collateral: collateral,
+                timestamp: block.timestamp,
+                active: true
+            })
+        );
 
         uint256 bidIndex = bids.length - 1;
         if (bids.length == 1 || bidAmount > bids[highestBidIndex].bidAmount) {
@@ -266,11 +268,7 @@ contract VehicleAuction is ReentrancyGuard {
         Listing memory listingData = vlr.getListing(config.listingId);
 
         uint256 newTokenId = ownershipNFT.mint(
-            msg.sender,
-            config.listingId,
-            listingData.vehicleMetadataHash,
-            address(this),
-            currentBid.bidAmount
+            msg.sender, config.listingId, listingData.vehicleMetadataHash, address(this), currentBid.bidAmount
         );
 
         buyerTokenId = newTokenId;
@@ -315,7 +313,9 @@ contract VehicleAuction is ReentrancyGuard {
             currentBid.active = false;
 
             // Slash collateral to treasury
-            require(IERC20(config.usdcToken).transfer(treasury, currentBid.collateral), "VehicleAuction: transfer failed");
+            require(
+                IERC20(config.usdcToken).transfer(treasury, currentBid.collateral), "VehicleAuction: transfer failed"
+            );
 
             emit CollateralSlashed(currentBid.bidder, currentBid.collateral);
         }
@@ -378,7 +378,12 @@ contract VehicleAuction is ReentrancyGuard {
 
     // ── Phase 4: Delivery ──
 
-    function confirmShipped(string calldata _trackingInfo) external nonReentrant onlySeller inStatus(AuctionStatus.AWAITING_DELIVERY) {
+    function confirmShipped(string calldata _trackingInfo)
+        external
+        nonReentrant
+        onlySeller
+        inStatus(AuctionStatus.AWAITING_DELIVERY)
+    {
         trackingInfo = _trackingInfo;
         disputeRequestTime = block.timestamp;
         config.status = AuctionStatus.IN_DELIVERY;

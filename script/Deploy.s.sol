@@ -21,11 +21,8 @@ contract DeployScript is Script {
         // Deploy registries
         SellerRegistry sellerRegistry = new SellerRegistry(deployer);
         ValidatorRegistry validatorRegistry = new ValidatorRegistry(deployer);
-        VehicleListingRegistry listingRegistry = new VehicleListingRegistry(
-            deployer,
-            address(sellerRegistry),
-            address(validatorRegistry)
-        );
+        VehicleListingRegistry listingRegistry =
+            new VehicleListingRegistry(deployer, address(sellerRegistry), address(validatorRegistry));
 
         // Deploy NFT contract — factory is the initial minter
         VehicleOwnershipNFT ownershipNFT = new VehicleOwnershipNFT(deployer, deployer);

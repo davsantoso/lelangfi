@@ -16,9 +16,9 @@ contract CascadingOfferTest is SharedSetup {
         listingId = _submitAndApproveListing(seller);
         auction = _createAuction(listingId, seller, START_PRICE);
 
-        bid1Amount = START_PRICE * 12 / 10;   // 12000
-        bid2Amount = START_PRICE * 11 / 10;   // 11000
-        bid3Amount = START_PRICE;              // 10000
+        bid1Amount = START_PRICE * 12 / 10; // 12000
+        bid2Amount = START_PRICE * 11 / 10; // 11000
+        bid3Amount = START_PRICE; // 10000
 
         // Place bids in increasing order
         _bid(auction, bidder3, bid3Amount);
@@ -61,11 +61,7 @@ contract CascadingOfferTest is SharedSetup {
 
         auction.slashAndOfferNext();
 
-        assertEq(
-            usdc.balanceOf(treasury),
-            treasuryBalBefore + bidder1Collateral,
-            "slashed collateral to treasury"
-        );
+        assertEq(usdc.balanceOf(treasury), treasuryBalBefore + bidder1Collateral, "slashed collateral to treasury");
     }
 
     // ── Bidder-2 Decline → Cascade ke Bidder-3 ──
@@ -187,11 +183,7 @@ contract CascadingOfferTest is SharedSetup {
 
         auction.slashAndOfferNext();
 
-        assertEq(
-            usdc.balanceOf(treasury),
-            treasuryBalBefore + bidder2Collateral,
-            "bidder2 collateral slashed"
-        );
+        assertEq(usdc.balanceOf(treasury), treasuryBalBefore + bidder2Collateral, "bidder2 collateral slashed");
     }
 
     // ── Decline after deadline reverts ──
