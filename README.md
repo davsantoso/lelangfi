@@ -13,11 +13,9 @@ Lelang enables trusted vehicle auctions with NFT ownership tracking, USDC settle
 - **Cascade Mechanism** — If winner defaults, next highest bidder gets an offer (accept/decline/slash cycle).
 - **NFT Ownership** — Soulbound VehicleOwnershipNFT minted on payment, transferable after delivery.
 - **Dispute Resolution** — Validator-mediated escrow release.
-
-
+- **Delivery Timeout** — Buyer can force-refund after 30 days if seller never confirms shipment.
 
 ## Contracts
-
 
 | Contract                 | Description                                              |
 | ------------------------ | -------------------------------------------------------- |
@@ -28,15 +26,10 @@ Lelang enables trusted vehicle auctions with NFT ownership tracking, USDC settle
 | `VehicleAuction`         | Core auction logic (bid, pay, confirm, cascade, dispute) |
 | `VehicleAuctionFactory`  | Deploys one `VehicleAuction` per listing                 |
 
-
-
-
 ## Prerequisites
 
 - [Foundry](https://book.getfoundry.sh/)
 - USDC token contract address (6 decimals)
-
-
 
 ## Quick Start
 
@@ -51,8 +44,6 @@ forge build --via-ir
 forge test --via-ir -vvv --match-path "test/*.t.sol"
 ```
 
-
-
 ## Deploy
 
 Set environment variables in `.env`, then run:
@@ -62,10 +53,9 @@ source .env
 forge script script/Deploy.s.sol --rpc-url $RPC_URL --private-key $PRIVATE_KEY --broadcast
 ```
 
-Required env vars: `RPC_URL`, `PRIVATE_KEY`, `USDC_ADDRESS`, `TREASURY_ADDRESS`, `PLATFORM_FEE_BPS`, `AUCTION_DURATION`, `COLLATERAL_BPS`, `MIN_INCREMENT_BPS`, `ANTI_SNIPE_EXTENSION`, `PAYMENT_WINDOW`, `DISPUTE_WINDOW`.
+Required env vars: `RPC_URL`, `PRIVATE_KEY`, `DEPLOYER_PRIVATE_KEY`, `USDC_TOKEN`, `TREASURY` (optional, defaults to deployer).
 
 ## Configuration Defaults
-
 
 | Parameter            | Value      |
 | -------------------- | ---------- |
@@ -75,9 +65,7 @@ Required env vars: `RPC_URL`, `PRIVATE_KEY`, `USDC_ADDRESS`, `TREASURY_ADDRESS`,
 | Anti-snipe extension | 10 minutes |
 | Payment window       | 3 days     |
 | Dispute window       | 14 days    |
-
-
-
+| Delivery timeout     | 30 days    |
 
 ## Architecture
 
@@ -91,16 +79,27 @@ Factory ──deploys──► per-listing Auction ──uses──► ListingRe
                       USDC (external)
 ```
 
-
-
-## Test Suites (49 tests, all passing)
+## Test Suites (60 tests, all passing)
 
 ```bash
 forge test --via-ir -vvv --match-path "test/*.t.sol"
 ```
 
-- `SellerRegistry.t.sol` — 9 tests
-- `VehicleListingRegistry.t.sol` — 9 tests
-- `VehicleAuction.t.sol` — 20 tests (happy path, bids, disputes, NFT lifecycle, anti-snipe)
-- `CascadingOffer.t.sol` — 11 tests (winner kabur, cascade, accept/decline/slash)
+| Test File                      | Tests | Focus |
+| ------------------------------ | ----- | ----- |
+| `SellerRegistry.t.sol`         | 9     | Seller whitelist CRUD |
+| `ValidatorRegistry.t.sol`      | 8     | Validator whitelist CRUD |
+| `VehicleListingRegistry.t.sol` | 9     | Listing submit/approve/reject |
+| `VehicleAuction.t.sol`         | 23    | Bidding, payment, delivery, dispute, force-refund |
+| `CascadingOffer.t.sol`         | 11    | Winner kabur, cascade, accept/decline/slash |
 
+## Remaining Improvements
+
+Minor issues identified but not yet implemented (pending decision):
+
+- `_returnAllCollateral()` uses O(n) unbounded loop — consider pull-over-push pattern
+- No `Pausable` / emergency stop mechanism
+- No upgradeability (no proxy pattern)
+- `startPaymentPhase()` open to any caller
+- Registry addresses immutable per auction (no migration path)
+- Critical config constants hardcoded (`EXTEND_WINDOW`, `DISPUTE_WINDOW`, `DELIVERY_TIMEOUT`)

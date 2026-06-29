@@ -37,6 +37,7 @@ contract VehicleListingRegistry is AccessControl {
     event ListingApproved(uint256 indexed listingId, address indexed validator);
     event ListingRejected(uint256 indexed listingId, address indexed validator, string reason);
     event FactoryAuthorized(address indexed factory);
+    event FactoryUnauthorized(address indexed factory);
 
     modifier onlyAdmin() {
         require(hasRole(ADMIN_ROLE, msg.sender), "VehicleListingRegistry: only admin");
@@ -109,6 +110,11 @@ contract VehicleListingRegistry is AccessControl {
     function authorizeFactory(address factory) external onlyAdmin {
         authorizedFactories[factory] = true;
         emit FactoryAuthorized(factory);
+    }
+
+    function unauthorizeFactory(address factory) external onlyAdmin {
+        authorizedFactories[factory] = false;
+        emit FactoryUnauthorized(factory);
     }
 
     function markListingAuctionCreated(uint256 listingId) external {

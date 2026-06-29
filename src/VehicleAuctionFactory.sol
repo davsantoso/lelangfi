@@ -66,7 +66,9 @@ contract VehicleAuctionFactory is AccessControl {
         require(auctionByListing[listingId] == address(0), "VehicleAuctionFactory: auction already exists");
 
         require(startPrice > 0, "VehicleAuctionFactory: zero start price");
+        require(startPrice >= listing.startPrice, "VehicleAuctionFactory: start price below listing");
         require(duration > 0, "VehicleAuctionFactory: zero duration");
+        require(defaultCollateralBps == listing.collateralBps, "VehicleAuctionFactory: collateral mismatch");
 
         // Grant MINTER_ROLE to the new auction on the NFT contract
         VehicleOwnershipNFT nft = VehicleOwnershipNFT(ownershipNFT);

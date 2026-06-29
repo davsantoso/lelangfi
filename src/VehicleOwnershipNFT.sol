@@ -19,7 +19,7 @@ contract VehicleOwnershipNFT is ERC721, AccessControl {
     }
 
     mapping(uint256 => VehicleInfo) public vehicleInfo;
-    mapping(address => uint256) public buyerTokenId;
+    mapping(address => uint256[]) public buyerTokenIds;
     mapping(uint256 => bool) public isTransferable;
 
     event VehicleNFTCreated(uint256 indexed tokenId, uint256 indexed listingId, address indexed buyer);
@@ -42,8 +42,6 @@ contract VehicleOwnershipNFT is ERC721, AccessControl {
         address auctionAddress,
         uint256 paidAmount
     ) external onlyMinter returns (uint256) {
-        require(buyerTokenId[to] == 0, "VehicleOwnershipNFT: already has token");
-
         _tokenIdCounter++;
         uint256 tokenId = _tokenIdCounter;
 
@@ -58,7 +56,7 @@ contract VehicleOwnershipNFT is ERC721, AccessControl {
             timestamp: block.timestamp
         });
 
-        buyerTokenId[to] = tokenId;
+        buyerTokenIds[to].push(tokenId);
 
         emit VehicleNFTCreated(tokenId, listingId, to);
 
@@ -73,7 +71,16 @@ contract VehicleOwnershipNFT is ERC721, AccessControl {
         address owner = _ownerOf(tokenId);
         require(owner != address(0), "VehicleOwnershipNFT: token not found");
 
-        delete buyerTokenId[owner];
+        // Remove tokenId from owner's array
+        uint256[] storage tokens = buyerTokenIds[owner];
+        for (uint256 i = 0; i < tokens.length; i++) {
+            if (tokens[i] == tokenId) {
+                tokens[i] = tokens[tokens.length - 1];
+                tokens.pop();
+                break;
+            }
+        }
+
         delete vehicleInfo[tokenId];
 
         _burn(tokenId);

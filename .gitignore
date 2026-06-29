@@ -21,3 +21,16 @@ docs/
 
 AGENTS.md
 agents.md
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor temp files
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/

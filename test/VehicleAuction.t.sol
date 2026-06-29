@@ -44,7 +44,7 @@ contract VehicleAuctionTest is SharedSetup {
         auction.startPaymentPhase();
         _payRemaining(auction, bidder1, START_PRICE);
 
-        uint256 tokenId = ownershipNFT.buyerTokenId(bidder1);
+        uint256 tokenId = auction.buyerTokenId();
         assertTrue(tokenId != 0, "token should be minted");
         assertEq(ownershipNFT.ownerOf(tokenId), bidder1, "owner should be bidder");
 
@@ -59,7 +59,7 @@ contract VehicleAuctionTest is SharedSetup {
         auction.startPaymentPhase();
         _completeHappyPath(auction, seller, bidder1, START_PRICE);
 
-        uint256 tokenId = ownershipNFT.buyerTokenId(bidder1);
+        uint256 tokenId = auction.buyerTokenId();
 
         vm.prank(bidder1);
         ownershipNFT.transferFrom(bidder1, address(0x456), tokenId);
@@ -168,7 +168,7 @@ contract VehicleAuctionTest is SharedSetup {
         auction.confirmShipped("RESI");
 
         vm.prank(bidder2);
-        vm.expectRevert("VehicleAuction: not NFT holder");
+        vm.expectRevert("VehicleAuction: not token owner");
         auction.confirmReceived();
     }
 
@@ -218,6 +218,7 @@ contract VehicleAuctionTest is SharedSetup {
 
         _advanceTime(15 days);
 
+        vm.prank(seller);
         auction.requestDisputeResolution();
 
         uint256 sellerBalBefore = usdc.balanceOf(seller);
@@ -245,6 +246,7 @@ contract VehicleAuctionTest is SharedSetup {
 
         _advanceTime(15 days);
 
+        vm.prank(bidder1);
         auction.requestDisputeResolution();
 
         uint256 bidderBalBefore = usdc.balanceOf(bidder1);
@@ -261,13 +263,14 @@ contract VehicleAuctionTest is SharedSetup {
         auction.startPaymentPhase();
         _payRemaining(auction, bidder1, START_PRICE);
 
-        uint256 tokenId = ownershipNFT.buyerTokenId(bidder1);
+        uint256 tokenId = auction.buyerTokenId();
 
         vm.prank(seller);
         auction.confirmShipped("RESI001");
 
         _advanceTime(15 days);
 
+        vm.prank(bidder1);
         auction.requestDisputeResolution();
 
         vm.prank(validator);
@@ -275,6 +278,55 @@ contract VehicleAuctionTest is SharedSetup {
 
         vm.expectRevert();
         ownershipNFT.ownerOf(tokenId);
+    }
+
+    // ── Delivery Timeout / Buyer Force Refund ──
+
+    function test_BuyerForceRefund_BeforeTimeout_Reverts() public {
+        _bid(auction, bidder1, START_PRICE);
+        _advanceToEndTime(auction);
+        auction.startPaymentPhase();
+        _payRemaining(auction, bidder1, START_PRICE);
+
+        // Try to refund before 30 days — should revert
+        vm.expectRevert("VehicleAuction: delivery timeout not reached");
+        auction.buyerForceRefund();
+    }
+
+    function test_BuyerForceRefund_AfterTimeout_Success() public {
+        _bid(auction, bidder1, START_PRICE);
+        _advanceToEndTime(auction);
+        auction.startPaymentPhase();
+        _payRemaining(auction, bidder1, START_PRICE);
+
+        uint256 bidderBalBefore = usdc.balanceOf(bidder1);
+        uint256 treasuryBalBefore = usdc.balanceOf(treasury);
+
+        // Advance past 30-day delivery timeout
+        _advanceTime(31 days);
+
+        auction.buyerForceRefund();
+
+        // Buyer gets full bidAmount back
+        assertEq(
+            usdc.balanceOf(bidder1),
+            bidderBalBefore + START_PRICE,
+            "buyer should be fully refunded"
+        );
+        // Treasury balance unchanged (no fees)
+        assertEq(usdc.balanceOf(treasury), treasuryBalBefore, "treasury unchanged");
+        // Status CANCELLED
+        assertEq(uint256(_getStatus()), uint256(AuctionStatus.CANCELLED));
+    }
+
+    function test_BuyerForceRefund_WrongStatus_Reverts() public {
+        _bid(auction, bidder1, START_PRICE);
+        _advanceToEndTime(auction);
+        auction.startPaymentPhase();
+
+        // Status is AWAITING_PAYMENT, not AWAITING_DELIVERY
+        vm.expectRevert("VehicleAuction: invalid status");
+        auction.buyerForceRefund();
     }
 
     function test_Dispute_OnlyValidator() public {
@@ -285,8 +337,9 @@ contract VehicleAuctionTest is SharedSetup {
 
         vm.prank(seller);
         auction.confirmShipped("RESI");
-
         _advanceTime(15 days);
+
+        vm.prank(seller);
         auction.requestDisputeResolution();
 
         vm.prank(seller);

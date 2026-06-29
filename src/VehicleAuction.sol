@@ -53,12 +53,14 @@ contract VehicleAuction is ReentrancyGuard {
     VehicleOwnershipNFT public ownershipNFT;
 
     uint256 public disputeRequestTime;
+    uint256 public buyerTokenId;
     string public trackingInfo;
 
     uint256 public constant EXTEND_WINDOW = 10 minutes;
     uint256 public constant EXTEND_DURATION = 10 minutes;
     uint256 public constant PAYMENT_WINDOW = 3 days;
     uint256 public constant DISPUTE_WINDOW = 14 days;
+    uint256 public constant DELIVERY_TIMEOUT = 30 days;
     uint256 public constant MAX_BPS = 10000;
 
     event BidPlaced(address indexed bidder, uint256 bidAmount, uint256 collateral, uint256 newEndTime);
@@ -71,8 +73,10 @@ contract VehicleAuction is ReentrancyGuard {
     event DeliveryConfirmed(address indexed buyer, uint256 sellerReceived, uint256 feeCollected);
     event CollateralSlashed(address indexed bidder, uint256 amount);
     event OfferDeclined(address indexed bidder);
+    event OfferAccepted(address indexed bidder);
     event DisputeOpened();
     event DisputeResolved(bool buyerFault, address indexed resolvedBy);
+    event DeliveryTimeoutRefund(address indexed buyer, uint256 amount);
     event AuctionCancelled(uint256 indexed listingId);
 
     modifier onlySeller() {
@@ -134,6 +138,9 @@ contract VehicleAuction is ReentrancyGuard {
         require(bidAmount >= config.startPrice, "VehicleAuction: below start price");
         require(msg.sender != config.seller, "VehicleAuction: seller cannot bid");
         require(bidAmount > 0, "VehicleAuction: zero bid");
+
+        (uint256 existingIndex,) = _findActiveBid(msg.sender);
+        require(existingIndex == type(uint256).max, "VehicleAuction: already has active bid");
 
         if (bids.length > 0) {
             Bid memory highest = bids[highestBidIndex];
@@ -251,11 +258,14 @@ contract VehicleAuction is ReentrancyGuard {
 
         emit PaymentCompleted(msg.sender, currentBid.bidAmount);
 
+        // Set delivery deadline so buyer can force refund if seller never ships
+        disputeRequestTime = block.timestamp + DELIVERY_TIMEOUT;
+
         // Mint ownership NFT
         VehicleListingRegistry vlr = VehicleListingRegistry(listingRegistry);
         Listing memory listingData = vlr.getListing(config.listingId);
 
-        uint256 tokenId = ownershipNFT.mint(
+        uint256 newTokenId = ownershipNFT.mint(
             msg.sender,
             config.listingId,
             listingData.vehicleMetadataHash,
@@ -263,7 +273,9 @@ contract VehicleAuction is ReentrancyGuard {
             currentBid.bidAmount
         );
 
-        emit OwnershipNFTMinted(msg.sender, tokenId);
+        buyerTokenId = newTokenId;
+
+        emit OwnershipNFTMinted(msg.sender, newTokenId);
     }
 
     // ── Cascading Offer ──
@@ -275,8 +287,7 @@ contract VehicleAuction is ReentrancyGuard {
         require(block.timestamp <= config.paymentDeadline, "VehicleAuction: deadline passed");
         require(currentBid.active, "VehicleAuction: bid not active");
 
-        // Accept is implicit — bidder must still call payRemaining()
-        // This function exists for explicit confirmation
+        emit OfferAccepted(msg.sender);
     }
 
     function declineOffer() external nonReentrant inStatus(AuctionStatus.AWAITING_PAYMENT) {
@@ -376,16 +387,15 @@ contract VehicleAuction is ReentrancyGuard {
     }
 
     function confirmReceived() external nonReentrant inStatus(AuctionStatus.IN_DELIVERY) {
-        uint256 tokenId = ownershipNFT.buyerTokenId(msg.sender);
-        require(tokenId != 0, "VehicleAuction: not NFT holder");
-        require(ownershipNFT.ownerOf(tokenId) == msg.sender, "VehicleAuction: not token owner");
+        require(buyerTokenId != 0, "VehicleAuction: no token");
+        require(ownershipNFT.ownerOf(buyerTokenId) == msg.sender, "VehicleAuction: not token owner");
 
         _releaseFunds();
 
         config.status = AuctionStatus.COMPLETED;
 
         // Make NFT transferable
-        ownershipNFT.setTransferable(tokenId, true);
+        ownershipNFT.setTransferable(buyerTokenId, true);
     }
 
     function _releaseFunds() internal {
@@ -395,7 +405,7 @@ contract VehicleAuction is ReentrancyGuard {
 
         IERC20 usdc = IERC20(config.usdcToken);
 
-        require(usdc.transfer(msg.sender, collateral), "VehicleAuction: transfer failed");
+        require(usdc.transfer(winningBid.bidder, collateral), "VehicleAuction: transfer failed");
 
         uint256 fee = (totalAmount * config.platformFeeBps) / MAX_BPS;
         require(usdc.transfer(treasury, fee), "VehicleAuction: transfer failed");
@@ -406,9 +416,40 @@ contract VehicleAuction is ReentrancyGuard {
         emit DeliveryConfirmed(msg.sender, sellerAmount, fee);
     }
 
+    function buyerForceRefund() external nonReentrant inStatus(AuctionStatus.AWAITING_DELIVERY) {
+        require(block.timestamp >= disputeRequestTime, "VehicleAuction: delivery timeout not reached");
+
+        Bid storage winningBid = bids[config.currentOfferIndex];
+
+        // Mark winning bid inactive so _returnAllCollateral doesn't double-pay
+        winningBid.active = false;
+
+        // Refund buyer full bidAmount (includes collateral + remaining payment)
+        uint256 totalPaid = winningBid.bidAmount;
+        IERC20 usdc = IERC20(config.usdcToken);
+        require(usdc.transfer(winningBid.bidder, totalPaid), "VehicleAuction: transfer failed");
+
+        // Burn the NFT
+        if (buyerTokenId != 0) {
+            ownershipNFT.burn(buyerTokenId);
+        }
+
+        // Return all other active bidders' collateral
+        _returnAllCollateral();
+
+        config.status = AuctionStatus.CANCELLED;
+
+        emit DeliveryTimeoutRefund(winningBid.bidder, totalPaid);
+        emit AuctionCancelled(config.listingId);
+    }
+
     // ── Phase 5: Dispute ──
 
     function requestDisputeResolution() external nonReentrant inStatus(AuctionStatus.IN_DELIVERY) {
+        require(
+            msg.sender == config.seller || msg.sender == ownershipNFT.ownerOf(buyerTokenId),
+            "VehicleAuction: only seller or buyer"
+        );
         require(block.timestamp >= disputeRequestTime + DISPUTE_WINDOW, "VehicleAuction: dispute window not reached");
 
         config.status = AuctionStatus.IN_DISPUTE;
@@ -433,9 +474,8 @@ contract VehicleAuction is ReentrancyGuard {
             config.status = AuctionStatus.COMPLETED;
 
             // Get the tokenId and make it transferable
-            uint256 tokenId = _findBuyerTokenId();
-            if (tokenId != 0) {
-                ownershipNFT.setTransferable(tokenId, true);
+            if (buyerTokenId != 0) {
+                ownershipNFT.setTransferable(buyerTokenId, true);
             }
         } else {
             // Mark winning bid inactive so _returnAllCollateral doesn't double-pay
@@ -445,7 +485,7 @@ contract VehicleAuction is ReentrancyGuard {
             uint256 totalAmount = winningBid.bidAmount;
             require(usdc.transfer(winningBid.bidder, totalAmount), "VehicleAuction: transfer failed");
 
-            uint256 tokenId = _findBuyerTokenId();
+            uint256 tokenId = buyerTokenId;
             if (tokenId != 0) {
                 ownershipNFT.burn(tokenId);
             }
@@ -460,8 +500,7 @@ contract VehicleAuction is ReentrancyGuard {
     }
 
     function _findBuyerTokenId() internal view returns (uint256) {
-        Bid storage winningBid = bids[config.currentOfferIndex];
-        return ownershipNFT.buyerTokenId(winningBid.bidder);
+        return buyerTokenId;
     }
 
     // ── Admin ──
@@ -491,6 +530,6 @@ contract VehicleAuction is ReentrancyGuard {
         if (config.currentOfferIndex < bids.length) {
             return bids[config.currentOfferIndex];
         }
-        revert("VehicleAuction: no current offer");
+        return Bid(address(0), 0, 0, 0, false);
     }
 }

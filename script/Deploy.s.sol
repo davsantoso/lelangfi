@@ -41,8 +41,14 @@ contract DeployScript is Script {
             address(ownershipNFT)
         );
 
+        // Grant DEFAULT_ADMIN_ROLE on NFT to factory so it can grant MINTER_ROLE to each auction
+        ownershipNFT.grantRole(ownershipNFT.DEFAULT_ADMIN_ROLE(), address(factory));
+
         // Grant MINTER_ROLE on NFT to the factory so it can grant to individual auctions
         ownershipNFT.grantRole(ownershipNFT.MINTER_ROLE(), address(factory));
+
+        // Authorize factory to call markListingAuctionCreated on behalf of the seller
+        listingRegistry.authorizeFactory(address(factory));
 
         vm.stopBroadcast();
 
